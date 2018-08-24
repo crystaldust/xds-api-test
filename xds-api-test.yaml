@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: xds-api-test
+  namespace: istio-system
+  labels:
+    app: xds-api-test
+spec:
+  ports:
+  - port: 8181
+    targetPort: 8882
+    name: http-xds-api-test
+  # externalIPs: [192.168.43.70]
+  # type: NodePort
+  selector:
+    app: xds-api-test
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: xds-api-test
+  namespace: istio-system
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: xds-api-test
+        version: v1
+    spec:
+      containers:
+      - name: xds-api-test
+        image: juzhen/xds-api-test:v1
+        imagePullPolicy: IfNotPresent
+        args: ["istio-pilot.istio-system:15010"]
+        # ports:
+        # - containerPort: 8882
+---
+

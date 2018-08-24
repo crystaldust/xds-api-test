@@ -1,0 +1,6 @@
+package: github.com/juzhen/xds-api-test
+import:
+- package: istio.io/istio
+  version: ^1.0.0
+  subpackages:
+  - pilot/pkg/proxy/envoy/v2
