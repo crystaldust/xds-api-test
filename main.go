@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	apiv2 "github.com/envoyproxy/go-control-plane/envoy/api/v2"
@@ -57,11 +58,21 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		jsonPrint(len(clusters))
+		fmt.Printf("%d clusters found\n", len(clusters))
+
+		for _, cluster := range clusters {
+			if strings.Index(cluster.Name, "istio-pilot") != -1 {
+				if endpoints, err := eds(conn, cluster.Name); err != nil {
+					fmt.Println(err)
+				} else {
+					fmt.Println("endpoints of ", cluster.Name)
+					jsonPrint(endpoints)
+				}
+			}
+		}
 
 		time.Sleep(time.Second * 3)
 	}
-
 }
 
 func cds(conn *grpc.ClientConn) ([]apiv2.Cluster, error) {
