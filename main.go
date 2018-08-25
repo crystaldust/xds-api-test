@@ -2,117 +2,172 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
 	apiv2 "github.com/envoyproxy/go-control-plane/envoy/api/v2"
+	apiv2core "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
 	"github.com/envoyproxy/go-control-plane/envoy/service/discovery/v2"
+	"github.com/gogo/protobuf/proto"
 	"google.golang.org/grpc"
 )
 
-func main() {
-	// mux := http.NewServeMux()
-	// mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-	//     w.WriteHeader(http.StatusOK)
-	//     w.Write([]byte("Hello"))
-	// })
-	//
-	// http.ListenAndServe(":8881", mux)
-	getServices()
+var (
+	pilotAddr string
+	err       error
+	conn      *grpc.ClientConn
+)
 
-	// stop forever
-	// for {
-	//     time.Sleep(time.Second * 10)
-	// }
-}
+var (
+	cdsVersionInfo   string
+	cdsResponseNonce string
 
-func getServices() {
-	// server := &v2.DiscoveryServer{}
-	// fmt.Println(server)
+	edsVersionInfo   string
+	edsResponseNonce string
+)
 
-	fmt.Println(os.Args)
-	pilotAddr := "192.168.43.70:8680"
-	if len(os.Args) >= 2 && os.Args[1] != "" {
-		pilotAddr = os.Args[1]
+func init() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: xds-api-test {pilot-address}")
+		os.Exit(1)
 	}
-	fmt.Println("[JUZHEN DEBUG]: ", "connecting to ", pilotAddr)
 
-	conn, err := grpc.Dial(pilotAddr, grpc.WithInsecure())
+	if os.Args[1] == "" {
+		fmt.Println("Invalid pilot-address")
+		os.Exit(1)
+	}
+
+	pilotAddr = os.Args[1]
+	fmt.Println("connecting to ", pilotAddr)
+
+	conn, err = grpc.Dial(pilotAddr, grpc.WithInsecure())
 	if err != nil {
 		fmt.Println("failed to connect to port")
 		fmt.Println(err)
 		return
 	}
+}
 
-	getAds(conn)
-	// go getEds(conn)
+func main() {
+	for {
+		clusters, err := cds(conn)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		jsonPrint(len(clusters))
 
-	// client := v2.NewDiscoveryServer(model.Environment.ServiceDiscovery)
-	// fmt.Println(conn)
-
-	// client := v2.NewClusterDiscoveryServiceClient(conn)
-	// req := &v2.DiscoveryRequest{}
-	// req.ResourceNames = []string{}
-	// fmt.Println("req: ", req)
-	// resp, err := client.FetchClusters(ctx, req)
-	// if err != nil {
-	//     fmt.Println("Failed to fetch clusters")
-	//     fmt.Println(err)
-	// }
-	// fmt.Println(resp)
+		time.Sleep(time.Second * 3)
+	}
 
 }
 
-func getAds(conn *grpc.ClientConn) {
+func cds(conn *grpc.ClientConn) ([]apiv2.Cluster, error) {
 	ctx := context.Background()
-
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Second*100)
-	// defer cancel()
 
 	adsClient := v2.NewAggregatedDiscoveryServiceClient(conn)
 	adsResClient, err := adsClient.StreamAggregatedResources(ctx)
 	if err != nil {
 		fmt.Println("failed to get stream adsResClient")
+		return nil, err
+	}
+
+	req := &apiv2.DiscoveryRequest{
+		TypeUrl:       "type.googleapis.com/envoy.api.v2.Cluster",
+		VersionInfo:   cdsVersionInfo,
+		ResponseNonce: cdsResponseNonce,
+	}
+	fmt.Printf("request clusters with versioninfo[%s] and responsenonce[%s]\n", cdsVersionInfo, cdsResponseNonce)
+	req.Node = &apiv2core.Node{
+		// Sample taken from istio: router~172.30.77.6~istio-egressgateway-84b4d947cd-rqt45.istio-system~istio-system.svc.cluster.local-2
+		// The Node.Id should be in format {nodeType}~{ipAddr}~{serviceId~{domain}, splitted by '~'
+		// The format is required by pilot
+		Id:      "sidecar~192.168.43.100~xds-api-test~localhost",
+		Cluster: "my-powerful-machine-ouya",
+	}
+	if err := adsResClient.Send(req); err != nil {
+		return nil, err
+	}
+
+	resp, err := adsResClient.Recv()
+	if err != nil {
 		fmt.Println(err)
+		return nil, err
 	}
 
-	// go func(adsResClient v2.AggregatedDiscoveryService_StreamAggregatedResourcesClient) {
-	//     req := &apiv2.DiscoveryRequest{}
-	//
-	//     fmt.Println("Send: ", adsResClient.Send(req))
-	// }(adsResClient)
+	cdsResponseNonce = resp.GetNonce()
+	resources := resp.GetResources()
+	cdsVersionInfo = resp.GetVersionInfo()
 
-	fmt.Println(adsResClient != nil)
-	for {
-		req := &apiv2.DiscoveryRequest{}
-		fmt.Println("send: ", adsResClient.Send(req))
-
-		if resp, err := adsResClient.Recv(); err != nil {
-			fmt.Println(err)
-		} else if bs, e := resp.Marshal(); e != nil {
-			fmt.Println(e)
+	var cluster apiv2.Cluster
+	clusters := []apiv2.Cluster{}
+	for _, res := range resources {
+		if err := proto.Unmarshal(res.GetValue(), &cluster); err != nil {
+			fmt.Println("Failed to unmarshal resource: ", err)
 		} else {
-			fmt.Println(string(bs))
+			clusters = append(clusters, cluster)
 		}
-
-		time.Sleep(time.Second * 5)
 	}
+	return clusters, nil
 }
 
-func getEds(conn *grpc.ClientConn) {
+func eds(conn *grpc.ClientConn, clusterName string) ([]apiv2.ClusterLoadAssignment, error) {
 	ctx := context.Background()
 
-	client := apiv2.NewEndpointDiscoveryServiceClient(conn)
-	req := &apiv2.DiscoveryRequest{}
-	for {
-		if resp, err := client.FetchEndpoints(ctx, req); err != nil {
-			fmt.Println("Failed to fetch endpoints: ", err)
-		} else if bs, e := resp.Marshal(); e != nil {
-			fmt.Println("Failed to marshal EDS resp: ", e)
-		} else {
-			fmt.Println("EDS resp: ", string(bs))
-		}
-		time.Sleep(time.Second * 5)
+	adsClient := v2.NewAggregatedDiscoveryServiceClient(conn)
+	adsResClient, err := adsClient.StreamAggregatedResources(ctx)
+	if err != nil {
+		fmt.Println("failed to get stream adsResClient")
+		return nil, err
 	}
+
+	req := &apiv2.DiscoveryRequest{
+		TypeUrl:       "type.googleapis.com/envoy.api.v2.ClusterLoadAssignment",
+		VersionInfo:   edsVersionInfo,
+		ResponseNonce: edsResponseNonce,
+	}
+
+	fmt.Printf("eds with versioninfo[%s] and nonce[%s]\n", edsVersionInfo, edsResponseNonce)
+	req.Node = &apiv2core.Node{
+		Id:      "sidecar~192.168.43.100~xds-api-test~localhost",
+		Cluster: "juzhen-x79",
+	}
+	req.ResourceNames = []string{clusterName}
+	if err := adsResClient.Send(req); err != nil {
+		return nil, err
+	}
+
+	resp, err := adsResClient.Recv()
+	if err != nil {
+		return nil, err
+	}
+
+	resources := resp.GetResources()
+	edsResponseNonce = resp.GetNonce()
+	edsVersionInfo = resp.GetVersionInfo()
+
+	var endpoint apiv2.ClusterLoadAssignment
+	endpoints := []apiv2.ClusterLoadAssignment{}
+
+	for _, res := range resources {
+		if err := proto.Unmarshal(res.GetValue(), &endpoint); err != nil {
+			fmt.Println("Failed to unmarshal resource: ", err)
+		} else {
+			endpoints = append(endpoints, endpoint)
+		}
+	}
+	return endpoints, nil
+}
+
+// TODO Extract the common part of xds calls
+func xds(urlType string) error {
+
+	return nil
+}
+
+func jsonPrint(content interface{}) {
+	bs, _ := json.MarshalIndent(content, "", "  ")
+	fmt.Println(string(bs))
 }
