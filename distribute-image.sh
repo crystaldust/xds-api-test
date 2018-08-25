@@ -22,23 +22,15 @@ if [ "$nodeIPs" == "" ]; then
 fi
 
 
-localip=$(ip addr | grep 'inet.*wlp' | awk '{print $2}' | awk '{split($0,a,"/")}; {print a[1]}')
-if [ "$localip" == "" ]; then
-	echo "Failed to get local ip"
-	exit 1
-fi
-
 echo saving to $imagefilename.tar
 docker save $imagename > /tmp/$imagefilename.tar
 
 for nodeip in ${nodeIPs[@]}
 do
-	if [ "$nodeip" != "$localip" ]; then
-		echo distributing $imagename "to" $nodeip
-		scp /tmp/$imagefilename.tar root@$nodeip:/root/
-		ssh root@$nodeip "/usr/local/bin/docker load < /root/$imagefilename.tar"
-		ssh root@$nodeip "rm /root/$imagefilename.tar"
-	fi
+	echo distributing $imagename "to" $nodeip
+	scp /tmp/$imagefilename.tar root@$nodeip:/root/
+	ssh root@$nodeip "/usr/local/bin/docker load < /root/$imagefilename.tar"
+	ssh root@$nodeip "rm /root/$imagefilename.tar"
 done
 
 rm /tmp/$imagefilename.tar
