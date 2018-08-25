@@ -16,6 +16,7 @@ Make sure `kubectl` and `make` are already in $PATH, then just run `make all`, t
 
 - Build the go binary
 - Build the docker image `go-chassis/xds-api-test:v1`
+- Dispatch the image to the nodes in k8s cluster(make sure the host machine could SSH into the nodes)
 - Apply the deployment defined in `xds-api-test.yaml` to the kubernetes cluster
 
 Here we go!
