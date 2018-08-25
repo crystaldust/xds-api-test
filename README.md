@@ -28,7 +28,7 @@ Here we go!
 If everything goes well with `make`, then we should have a `xds-api-test` pod in `istio-system` namespace, find it and get the logs:
 
 ```bash
-$ kubectl logs -f -n istio-system (kubectl get pods -n istio-system | grep xds-api-test | awk '{print $1}')
+$ kubectl logs -f -n istio-system $(kubectl get pods -n istio-system | grep xds-api-test | awk '{print $1}')
 
 eds with versioninfo[2018-08-25T09:34:04Z] and nonce[2018-08-25 09:37:07.993629455 +0000 UTC m=+22137.693872102]
 endpoints of  outbound|9093||istio-pilot.istio-system.svc.cluster.local
