@@ -53,7 +53,7 @@ func init() {
 
 func main() {
 	for {
-		clusters, err := cds(conn)
+		clusters, err := cds()
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -62,7 +62,7 @@ func main() {
 
 		for _, cluster := range clusters {
 			if strings.Index(cluster.Name, "istio-pilot") != -1 {
-				if endpoints, err := eds(conn, cluster.Name); err != nil {
+				if endpoints, err := eds(cluster.Name); err != nil {
 					fmt.Println(err)
 				} else {
 					fmt.Println("endpoints of ", cluster.Name)
@@ -75,7 +75,7 @@ func main() {
 	}
 }
 
-func cds(conn *grpc.ClientConn) ([]apiv2.Cluster, error) {
+func cds() ([]apiv2.Cluster, error) {
 	ctx := context.Background()
 
 	adsClient := v2.NewAggregatedDiscoveryServiceClient(conn)
@@ -124,7 +124,7 @@ func cds(conn *grpc.ClientConn) ([]apiv2.Cluster, error) {
 	return clusters, nil
 }
 
-func eds(conn *grpc.ClientConn, clusterName string) ([]apiv2.ClusterLoadAssignment, error) {
+func eds(clusterName string) ([]apiv2.ClusterLoadAssignment, error) {
 	ctx := context.Background()
 
 	adsClient := v2.NewAggregatedDiscoveryServiceClient(conn)
