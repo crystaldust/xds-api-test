@@ -5,14 +5,22 @@ This demo project is an illustration of how to call pilot to get service/config 
 
 
 ### Prerequisites
-
 - [golang](https://golang.org/)
+- [glide](https://github.com/Masterminds/glide) or [vgo](https://github.com/golang/vgo) to manage the dependencies
 - [git](https://git-scm.com/)
 - a [kubernetes](https://kubernetes.io/) cluster
 
 ### How to run
 
-Make sure `kubectl` and `make` are already in $PATH, then just run `make all`, the scripts will:
+First manage the dependencies with glide or vgo:
+```bash
+$ glide install
+
+# or if you're using vgo:
+$ vgo install
+```
+
+Then make sure `kubectl` and `make` are already in $PATH, then just run `make all`, the scripts will:
 
 - Build the go binary
 - Build the docker image `go-chassis/xds-api-test:v1`
