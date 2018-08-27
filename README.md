@@ -6,17 +6,14 @@ This demo project is an illustration of how to call pilot to get service/config 
 
 ### Prerequisites
 - [golang](https://golang.org/)
-- [glide](https://github.com/Masterminds/glide) or [vgo](https://github.com/golang/vgo) to manage the dependencies
+- [vgo](https://github.com/golang/vgo) to manage the dependencies
 - [git](https://git-scm.com/)
 - a [kubernetes](https://kubernetes.io/) cluster
 
 ### How to run
 
-First manage the dependencies with glide or vgo:
+First manage the dependencies with vgo:
 ```bash
-$ glide install
-
-# or if you're using vgo:
 $ vgo install
 ```
 
