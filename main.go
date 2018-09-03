@@ -10,6 +10,7 @@ import (
 
 	apiv2 "github.com/envoyproxy/go-control-plane/envoy/api/v2"
 	apiv2core "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
+	apiv2route "github.com/envoyproxy/go-control-plane/envoy/api/v2/route"
 	"github.com/envoyproxy/go-control-plane/envoy/service/discovery/v2"
 	"github.com/gogo/protobuf/proto"
 	"google.golang.org/grpc"
@@ -22,11 +23,17 @@ var (
 )
 
 var (
-	cdsVersionInfo   string
-	cdsResponseNonce string
+	cdsVersionInfo   string = time.Now().String()
+	cdsResponseNonce string = time.Now().String()
 
-	edsVersionInfo   string
-	edsResponseNonce string
+	edsVersionInfo   string = time.Now().String()
+	edsResponseNonce string = time.Now().String()
+
+	rdsVersionInfo   string = time.Now().String()
+	rdsResponseNonce string = time.Now().String()
+
+	ldsVersionInfo   string = time.Now().String()
+	ldsResponseNonce string = time.Now().String()
 )
 
 func init() {
@@ -52,26 +59,40 @@ func init() {
 }
 
 func main() {
-	for {
-		clusters, err := cds()
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Printf("%d clusters found\n", len(clusters))
+	clusters, err := cds()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("%d clusters found\n", len(clusters))
+	jsonPrint(clusters)
 
-		for _, cluster := range clusters {
-			if strings.Index(cluster.Name, "istio-pilot") != -1 {
-				if endpoints, err := eds(cluster.Name); err != nil {
-					fmt.Println(err)
-				} else {
-					fmt.Println("endpoints of ", cluster.Name)
-					jsonPrint(endpoints)
-				}
+	listeners, err := lds()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("listeners:")
+	jsonPrint(listeners)
+
+	for _, cluster := range clusters {
+		// if strings.Index(cluster.Name, "pilotv2server") != -1 {
+		if strings.Index(cluster.Name, "reviews") != -1 {
+			// if endpoints, err := eds(cluster.Name); err != nil {
+			//     fmt.Println(err)
+			// } else {
+			//     fmt.Println("endpoints of ", cluster.Name)
+			//     jsonPrint(endpoints)
+			// }
+
+			if routes, err := rds(cluster.Name); err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Println("routes of", cluster.Name)
+				jsonPrint(routes)
 			}
-		}
 
-		time.Sleep(time.Second * 3)
+		}
 	}
 }
 
@@ -98,6 +119,7 @@ func cds() ([]apiv2.Cluster, error) {
 		Id:      "sidecar~192.168.43.100~xds-api-test~localhost",
 		Cluster: "my-powerful-machine-ouya",
 	}
+	jsonPrint(req)
 	if err := adsResClient.Send(req); err != nil {
 		return nil, err
 	}
@@ -170,6 +192,119 @@ func eds(clusterName string) ([]apiv2.ClusterLoadAssignment, error) {
 		}
 	}
 	return endpoints, nil
+}
+
+func rds(clusterName string) ([]apiv2route.VirtualHost, error) {
+	// Cluster name in format:
+	//
+	parts := strings.Split(clusterName, "|")
+	port := parts[1]
+	serviceName := parts[3]
+
+	ctx := context.Background()
+
+	adsClient := v2.NewAggregatedDiscoveryServiceClient(conn)
+	adsResClient, err := adsClient.StreamAggregatedResources(ctx)
+	if err != nil {
+		fmt.Println("failed to get stream adsResClient")
+		return nil, err
+	}
+
+	req := &apiv2.DiscoveryRequest{
+		TypeUrl:       "type.googleapis.com/envoy.api.v2.RouteConfiguration",
+		VersionInfo:   rdsVersionInfo,
+		ResponseNonce: rdsResponseNonce,
+	}
+
+	fmt.Printf("rds with versioninfo[%s] and nonce[%s]\n", edsVersionInfo, edsResponseNonce)
+	req.Node = &apiv2core.Node{
+		Id:      "sidecar~192.168.43.100~xds-api-test~localhost",
+		Cluster: "juzhen-x79",
+	}
+	req.ResourceNames = []string{port}
+	if err := adsResClient.Send(req); err != nil {
+		return nil, err
+	}
+
+	resp, err := adsResClient.Recv()
+	if err != nil {
+		return nil, err
+	}
+
+	resources := resp.GetResources()
+	rdsResponseNonce = resp.GetNonce()
+	rdsVersionInfo = resp.GetVersionInfo()
+
+	var route apiv2.RouteConfiguration
+	// routes := []apiv2.RouteConfiguration{}
+	virtualHosts := []apiv2route.VirtualHost{}
+
+	for _, res := range resources {
+		if err := proto.Unmarshal(res.GetValue(), &route); err != nil {
+			fmt.Println("Failed to unmarshal resource: ", err)
+		} else {
+			// Filter the virtual hosts
+			// routes = append(routes, route)
+			vhosts := route.GetVirtualHosts()
+			for _, vhost := range vhosts {
+				if vhost.Name == fmt.Sprintf("%s:%s", serviceName, port) {
+					virtualHosts = append(virtualHosts, vhost)
+					for _, r := range vhost.Routes {
+						routerClusterName := r.GetRoute().GetCluster()
+						fmt.Println("[DEBUG] routerClusterName: ", routerClusterName)
+					}
+				}
+			}
+		}
+	}
+	return virtualHosts, nil
+}
+
+func lds() ([]apiv2.Listener, error) {
+	ctx := context.Background()
+
+	adsClient := v2.NewAggregatedDiscoveryServiceClient(conn)
+	adsResClient, err := adsClient.StreamAggregatedResources(ctx)
+	if err != nil {
+		fmt.Println("failed to get stream adsResClient")
+		return nil, err
+	}
+
+	req := &apiv2.DiscoveryRequest{
+		TypeUrl:       "type.googleapis.com/envoy.api.v2.ClusterLoadAssignment",
+		VersionInfo:   ldsVersionInfo,
+		ResponseNonce: ldsResponseNonce,
+	}
+
+	fmt.Printf("lds with versioninfo[%s] and nonce[%s]\n", edsVersionInfo, edsResponseNonce)
+	req.Node = &apiv2core.Node{
+		Id:      "sidecar~192.168.43.100~xds-api-test~localhost",
+		Cluster: "juzhen-x79",
+	}
+	if err := adsResClient.Send(req); err != nil {
+		return nil, err
+	}
+
+	resp, err := adsResClient.Recv()
+	if err != nil {
+		return nil, err
+	}
+
+	resources := resp.GetResources()
+	ldsResponseNonce = resp.GetNonce()
+	ldsVersionInfo = resp.GetVersionInfo()
+
+	var listener apiv2.Listener
+	listeners := []apiv2.Listener{}
+
+	for _, res := range resources {
+		if err := proto.Unmarshal(res.GetValue(), &listener); err != nil {
+			fmt.Println("Failed to unmarshal resource: ", err)
+		} else {
+			listeners = append(listeners, listener)
+		}
+	}
+	return listeners, nil
 }
 
 // TODO Extract the common part of xds calls
