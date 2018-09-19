@@ -58,10 +58,8 @@ var (
 )
 
 func cds() ([]apiv2.Cluster, error) {
-	ctx := context.Background()
-
 	adsClient := v2.NewAggregatedDiscoveryServiceClient(conn)
-	adsResClient, err := adsClient.StreamAggregatedResources(ctx)
+	adsResClient, err := adsClient.StreamAggregatedResources(ctx.Background())
 	if err != nil {
 		fmt.Println("failed to get stream adsResClient")
 		return nil, err
@@ -75,7 +73,6 @@ func cds() ([]apiv2.Cluster, error) {
 	// fmt.Printf("request clusters with versioninfo[%s] and responsenonce[%s]\n", cdsVersionInfo, cdsResponseNonce)
 	req.Node = &apiv2core.Node{
 		// Sample taken from istio: router~172.30.77.6~istio-egressgateway-84b4d947cd-rqt45.istio-system~istio-system.svc.cluster.local-2
-		// The Node.Id should be in format {nodeType}~{ipAddr}~{serviceId~{domain}, splitted by '~'
 		// The format is required by pilot
 		Id:      "sidecar~192.168.43.100~xds-api-test~localhost",
 		Cluster: "my-powerful-machine-ouya",
@@ -232,7 +229,7 @@ func lds() ([]apiv2.Listener, error) {
 	}
 
 	req := &apiv2.DiscoveryRequest{
-		TypeUrl:       "type.googleapis.com/envoy.api.v2.ClusterLoadAssignment",
+		TypeUrl:       "type.googleapis.com/envoy.api.v2.Listener",
 		VersionInfo:   ldsVersionInfo,
 		ResponseNonce: ldsResponseNonce,
 	}
